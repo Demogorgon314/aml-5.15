@@ -42,7 +42,6 @@
 #define MCU_FAN_AUTO_SPEED_MIN          5
 #define MCU_FAN_AUTO_SPEED_DAILY        25
 #define MCU_FAN_AUTO_SPEED_NOISY        35
-#define MCU_FAN_AUTO_SPEED_MID          70
 #define MCU_FAN_AUTO_SLEW_STEP          5
 
 enum mcu_fan_mode {
@@ -285,15 +284,21 @@ static int mcu_fan_lerp(int value, int in_min, int in_max,
 
 static int mcu_fan_auto_speed_percent(struct mcu_fan_data *fan_data, int temp)
 {
-	int start_temp = fan_data->trig_temp_level0 -
+	int quiet_temp = fan_data->trig_temp_level1;
+	int full_temp = fan_data->trig_temp_level2;
+	int start_temp = quiet_temp -
 		MCU_FAN_AUTO_START_TEMP_DELTA;
-	int daily_temp = fan_data->trig_temp_level0 -
+	int daily_temp = quiet_temp -
 		MCU_FAN_AUTO_DAILY_TEMP_DELTA;
 
 	if (start_temp < 0)
 		start_temp = 0;
 	if (daily_temp <= start_temp)
 		daily_temp = start_temp + 1;
+	if (quiet_temp <= daily_temp)
+		quiet_temp = daily_temp + 1;
+	if (full_temp <= quiet_temp)
+		full_temp = quiet_temp + 1;
 
 	if (temp < start_temp)
 		return 0;
@@ -301,20 +306,14 @@ static int mcu_fan_auto_speed_percent(struct mcu_fan_data *fan_data, int temp)
 		return mcu_fan_lerp(temp, start_temp, daily_temp,
 				MCU_FAN_AUTO_SPEED_MIN,
 				MCU_FAN_AUTO_SPEED_DAILY);
-	if (temp < fan_data->trig_temp_level0)
+	if (temp < quiet_temp)
 		return mcu_fan_lerp(temp, daily_temp,
-				fan_data->trig_temp_level0,
+				quiet_temp,
 				MCU_FAN_AUTO_SPEED_DAILY,
 				MCU_FAN_AUTO_SPEED_NOISY);
-	if (temp < fan_data->trig_temp_level1)
-		return mcu_fan_lerp(temp, fan_data->trig_temp_level0,
-				fan_data->trig_temp_level1,
-				MCU_FAN_AUTO_SPEED_NOISY,
-				MCU_FAN_AUTO_SPEED_MID);
-	if (temp < fan_data->trig_temp_level2)
-		return mcu_fan_lerp(temp, fan_data->trig_temp_level1,
-				fan_data->trig_temp_level2,
-				MCU_FAN_AUTO_SPEED_MID, 100);
+	if (temp < full_temp)
+		return mcu_fan_lerp(temp, quiet_temp, full_temp,
+				MCU_FAN_AUTO_SPEED_NOISY, 100);
 
 	return 100;
 }
